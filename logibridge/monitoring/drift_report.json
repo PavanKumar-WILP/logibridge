@@ -1,0 +1,32 @@
+[
+    {
+        "feature": "temp_mean",
+        "psi": 0.5343,
+        "drift": true
+    },
+    {
+        "feature": "temp_std",
+        "psi": 0.4378,
+        "drift": true
+    },
+    {
+        "feature": "temp_rate",
+        "psi": 0.3005,
+        "drift": true
+    },
+    {
+        "feature": "vib_rms",
+        "psi": 0.1872,
+        "drift": false
+    },
+    {
+        "feature": "vib_peak",
+        "psi": 0.2241,
+        "drift": false
+    },
+    {
+        "feature": "vib_kurtosis",
+        "psi": 0.1668,
+        "drift": false
+    }
+]

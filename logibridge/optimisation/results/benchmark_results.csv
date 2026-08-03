@@ -1,0 +1,8 @@
+Metric,Value
+Average Latency (ms),0.002794295782223344
+P95 Latency (ms),0.0029001384973526
+Latency Std (ms),0.0017172032022274826
+Throughput (inf/sec),357871.9212052518
+CPU (%),0.0
+Process Memory (RSS) (MB),346.50390625
+Model Size (KB),4.578125

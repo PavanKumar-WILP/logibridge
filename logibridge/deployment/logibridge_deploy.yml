@@ -1,0 +1,62 @@
+---
+- name: Deploy LogiBridge Edge AI Service
+  hosts: localhost
+  become: false
+
+  vars:
+    project_root: "{{ playbook_dir }}/.."
+
+  tasks:
+
+    - name: Create required directories
+      file:
+        path: "{{ item }}"
+        state: directory
+      loop:
+        - "{{ project_root }}/training/models"
+        - "{{ project_root }}/monitoring/results"
+
+    - name: Install Python dependencies
+      pip:
+        name:
+          - numpy
+          - pandas
+          - tensorflow
+          - tensorflow-model-optimization
+          - paho-mqtt
+          - scikit-learn
+          - matplotlib
+          - psutil
+          - scipy
+
+    - name: Verify model exists
+      stat:
+        path: "{{ project_root }}/inference/model.tflite"
+      register: model_file
+
+    - name: Stop deployment if model missing
+      fail:
+        msg: "model.tflite not found."
+      when: not model_file.stat.exists
+
+    - name: Start Mosquitto Broker
+      shell: mosquitto -d
+      ignore_errors: yes
+
+    - name: Launch Edge Inference Service
+      shell: |
+        nohup python {{ project_root }}/inference/inference_service.py \
+        > {{ project_root }}/monitoring/inference.log 2>&1 &
+      args:
+        chdir: "{{ project_root }}"
+
+    - name: Launch Drift Monitor
+      shell: |
+        nohup python {{ project_root }}/monitoring/drift_monitor.py \
+        > {{ project_root }}/monitoring/drift.log 2>&1 &
+      args:
+        chdir: "{{ project_root }}"
+
+    - name: Deployment Complete
+      debug:
+        msg: "LogiBridge Edge AI deployment completed successfully."
