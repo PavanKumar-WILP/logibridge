@@ -230,7 +230,7 @@ optimisation/results/
 Install dependencies
 
 ```bash
-pip install numpy pandas scipy matplotlib scikit-learn tensorflow tensorflow-model-optimization paho-mqtt psutil
+pip install -r requirements.txt
 ```
 
 ---
@@ -254,7 +254,8 @@ Generate Dataset
 ```bash
 python training/generate_dataset.py
 ```
-
+o/p:
+    training/dataset.csv
 ---
 
 ## Step 3
@@ -264,7 +265,13 @@ Train Model
 ```bash
 python training/train_model.py
 ```
-
+o/p:
+    training/models/
+        model.keras
+        model_metrics.json
+        accuracy_curve.png
+        loss_curve.png
+    
 ---
 
 ## Step 4
@@ -274,37 +281,114 @@ Convert Model
 ```bash
 python training/convert_ptq.py
 ```
-
+o/p:
+    inference/model.tflite
 ---
 
 ## Step 5
 
 Run Inference
 
+Open ** Terminal 3 **
+execute one of the simulator:
 ```bash
-python inference/inference_service.py
+	1. python data_pipeline/simulator.py --anomaly none
+	2. python data_pipeline/simulator.py --anomaly temp_drift
+	3. python data_pipeline/simulator.py --anomaly combined
+
 ```
 
 ---
 
-## Step 6
-
-Run Drift Monitoring
-
+## Open **Terminal 4**
 ```bash
-python monitoring/drift_monitor.py
+
+python inference/inference_service.py
+```
+Observe: Normal / Warning / Critical 
+based on simulator selected
+---
+
+#Terminate Terminal 3 & 4
+
+
+## Step 6
+Docker
+```bash
+docker build -f inference/Dockerfile -t logibride-inference:v1 .
+docker run --rm -e MQTT_BROKER=host.docker.internal -e MQTT_PORT=1883 -e TRUCK_ID=TRUCK01 -e MODEL_PATH=/app/inference/model.tflite logibride-inference:v1
 ```
 
 ---
 
 ## Step 7
+Drift Monitoring
+Create Reference
+
+Terminal 3:
+```bash
+python data_pipeline/simulator.py --anomaly none
+```
+
+Terminal 4:
+```bash
+python inference/inference_service.py --build-reference
+```
+
+o/p:
+    monitoring/reference_dist.json
+
+Run Drift Monitoring
+
+```bash
+python inference/inference_service.py
+```
+o/p:
+    Observe PSI < 0.1
+
+# Stop Terminal 3
+```bash
+python data_pipeline/simulator.py --anomaly combined
+```
+o/p:
+    Observe a PSI value greater than the alert threshold (typically > 0.25), indicating concept drift.
+
+#Stop Terminal 3
+```bash
+python data_pipeline/simulator.py --anomaly none
+```
+o/p:
+    terminal 4: 
+        Observe PSI returning below the recovery threshold after normal data resumes.
+
+Stop Terminal 4
+----
+
+
+## Step 8
+```bash
+sudo ansible-playbook deployment/logibridge_deploy.yml
+
+sudo ansible-playbook deployment/logibridge_deploy.yml
+```
+
+o/p:
+    reports changed=0
+
+
+## Step 9
 
 Benchmark
 
 ```bash
 python optimisation/benchmark.py
 ```
-
+o/p:
+    Mean Latency (200 runs)
+    P95 Latency           
+    Model Size        
+    Classification Accuracy   
+    Energy per Inference      
 ---
 
 # Expected Outputs

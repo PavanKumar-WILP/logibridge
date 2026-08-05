@@ -51,7 +51,7 @@ TEMP_TOPIC = f"logibridge/trucks/{TRUCK_ID}/temperature"
 VIB_TOPIC = f"logibridge/trucks/{TRUCK_ID}/vibration"
 
 WINDOW_SECONDS = 30
-STEP_SECONDS = 2      # 10
+STEP_SECONDS =  10
 
 TEMP_HZ = 1           # 1 sample/second
 VIB_HZ = 0.5          # 1 sample every 2 seconds
@@ -64,11 +64,11 @@ SIMULATOR = ROOT / "data_pipeline" / "simulator.py"
 DATASET_FILE = ROOT / "training" / "dataset.csv" 
 TRAINING_STATS = ROOT / "data_pipeline" / "training_stats.npy"
 
-NORMAL_DURATION = 4 * 60 #20 * 60
-WARNING_DURATION = 3 * 60 #15 * 60
-CRITICAL_DURATION = 3 * 60 #15 * 60
+NORMAL_DURATION = 20 * 60
+WARNING_DURATION = 15 * 60
+CRITICAL_DURATION = 15 * 60
 
-
+DRIFT_SECONDS = 25  # Extra time to allow for drift in the simulator
 # ----------------------------------------------------
 # Global Buffers
 # ----------------------------------------------------
@@ -212,7 +212,7 @@ def collect_features(label):
     )
 
     print(
-        f"\rSamples={len(dataset):5d} | Label={label}",
+        f"\rSamples={len(dataset):5d} | Label={label} \n",
         end="",
         flush=True
     )
@@ -251,7 +251,7 @@ def run_phase(mode, duration, label):
 
     try:
 
-        while time.time() - start < duration:
+        while time.time() - start < duration + DRIFT_SECONDS:
 
             collect_features(label)
 
