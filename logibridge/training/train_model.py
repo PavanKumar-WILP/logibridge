@@ -34,6 +34,7 @@ from tensorflow.keras.layers import Dense
 from tensorflow.keras.callbacks import EarlyStopping
 
 import random
+import json
 
 random.seed(42)
 
@@ -329,11 +330,24 @@ print(shift_accuracy)
 # Save Model
 # ------------------------------------------------------
 
-model.save(
+WEIGHTS_PATH = MODEL_DIR / "model.weights.h5"
 
-    MODEL_PATH
+metrics_file = MODEL_DIR / "model_metrics.json"
 
-)
+with open(metrics_file, "w") as f:
+
+    json.dump(
+        {
+            "accuracy": float(accuracy)
+        },
+        f,
+        indent=4
+    )
+
+model.save(MODEL_PATH)
+
+model.save_weights(WEIGHTS_PATH)
+
 loss, accuracy = model.evaluate(
     X_test,
     y_test,

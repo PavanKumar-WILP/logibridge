@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 
 """
-----------------------------------------------------------
-Component D3
+---------------------------------------------------------
+LogiEdge
 
-Structured Pruning
-↓
+Component F1
 
-Fine Tune
+Model Variant M3
 
-↓
+35% Pruning
++
+INT8 Quantization
 
-INT8 Quantisation
+Produces
 
-----------------------------------------------------------
+training/models/pruned_model.keras
+
+inference/pruned_model.tflite
+---------------------------------------------------------
 """
 
 from pathlib import Path
@@ -24,219 +28,171 @@ import tensorflow as tf
 import tensorflow_model_optimization as tfmot
 
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
 
 ROOT = Path(__file__).resolve().parents[1]
 
 DATASET = ROOT / "training" / "dataset.csv"
 
-MODEL_DIR = ROOT / "training" / "models"
+MODEL = ROOT / "training" / "models" / "model.keras"
 
-MODEL = MODEL_DIR / "model.keras"
+PRUNED_MODEL = ROOT / "training" / "models" / "pruned_model.keras"
 
-PRUNED_MODEL = MODEL_DIR / "model_pruned.keras"
-
-PRUNED_TFLITE = MODEL_DIR / "model_pruned.tflite"
+TFLITE_MODEL = ROOT / "inference" / "pruned_model.tflite"
 
 STATS = ROOT / "data_pipeline" / "training_stats.npy"
 
-# ----------------------------------------------------
-# Load Dataset
-# ----------------------------------------------------
+##########################################################
+# Load dataset
+##########################################################
 
 df = pd.read_csv(DATASET)
 
 X = df.iloc[:, :-1].values
-
 y = df.iloc[:, -1].values
 
-stats = np.load(
-
-    STATS,
-
-    allow_pickle=True
-
-).item()
+stats = np.load(STATS, allow_pickle=True).item()
 
 mean = stats["mean"]
-
 std = stats["std"]
 
 X = (X - mean) / std
+X = X.astype(np.float32)
 
 X_train, X_test, y_train, y_test = train_test_split(
-
     X,
-
     y,
-
     test_size=0.20,
-
     random_state=42,
-
     stratify=y
-
 )
 
-# ----------------------------------------------------
-# Load FP32 Model
-# ----------------------------------------------------
+##########################################################
+# Load trained model
+##########################################################
 
-model = tf.keras.models.load_model(
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
 
-    MODEL
+model = Sequential([
+    Dense(32, activation="relu", input_shape=(6,)),
+    Dense(16, activation="relu"),
+    Dense(3, activation="softmax")
+])
 
+model.load_weights(ROOT / "training/models/model.weights.h5")
+
+##########################################################
+# Apply pruning
+##########################################################
+
+batch_size = 32
+epochs = 15
+
+end_step = np.ceil(len(X_train) / batch_size).astype(np.int32) * epochs
+
+pruning_schedule = tfmot.sparsity.keras.PolynomialDecay(
+    initial_sparsity=0.0,
+    final_sparsity=0.35,
+    begin_step=0,
+    end_step=end_step
 )
-
-print(model.summary())
-
-# ----------------------------------------------------
-# Apply Pruning
-# ----------------------------------------------------
-
-pruning_params = {
-
-    "pruning_schedule":
-
-    tfmot.sparsity.keras.PolynomialDecay(
-
-        initial_sparsity=0.20,
-
-        final_sparsity=0.50,
-
-        begin_step=0,
-
-        end_step=1000
-
-    )
-
-}
 
 pruned_model = tfmot.sparsity.keras.prune_low_magnitude(
-
     model,
-
-    **pruning_params
-
+    pruning_schedule=pruning_schedule
 )
-
-# ----------------------------------------------------
-# Compile
-# ----------------------------------------------------
 
 pruned_model.compile(
-
     optimizer="adam",
-
     loss="sparse_categorical_crossentropy",
-
     metrics=["accuracy"]
-
 )
 
-# ----------------------------------------------------
-# Fine Tune
-# ----------------------------------------------------
+##########################################################
+# Fine tune
+##########################################################
 
 callbacks = [
-
     tfmot.sparsity.keras.UpdatePruningStep()
-
 ]
 
 pruned_model.fit(
-
     X_train,
-
     y_train,
-
-    validation_split=0.20,
-
-    epochs=10,
-
-    batch_size=32,
-
+    validation_split=0.2,
+    epochs=epochs,
+    batch_size=batch_size,
     callbacks=callbacks,
-
     verbose=1
-
 )
 
-# ----------------------------------------------------
-# Remove Pruning Wrappers
-# ----------------------------------------------------
+##########################################################
+# Strip pruning wrappers
+##########################################################
 
-final_model = tfmot.sparsity.keras.strip_pruning(
+final_model = tfmot.sparsity.keras.strip_pruning(pruned_model)
 
-    pruned_model
+##########################################################
+# Evaluate
+##########################################################
 
-)
+pred = final_model.predict(X_test, verbose=0)
 
-final_model.save(
+pred = np.argmax(pred, axis=1)
 
-    PRUNED_MODEL
+acc = accuracy_score(y_test, pred)
 
-)
+print("\nPruned Accuracy =", acc)
 
-# ----------------------------------------------------
-# Convert to TFLite
-# ----------------------------------------------------
+##########################################################
+# Save pruned model
+##########################################################
 
-converter = tf.lite.TFLiteConverter.from_keras_model(
+final_model.save(PRUNED_MODEL)
 
-    final_model
-
-)
-
-converter.optimizations = [
-
-    tf.lite.Optimize.DEFAULT
-
-]
-
-tflite_model = converter.convert()
-
-with open(
-
-    PRUNED_TFLITE,
-
-    "wb"
-
-) as f:
-
-    f.write(tflite_model)
-
-print()
-
-print("Pruned model saved")
+print("\nSaved")
 
 print(PRUNED_MODEL)
 
-print()
+##########################################################
+# Representative dataset
+##########################################################
 
-print("Pruned TFLite saved")
+def representative_dataset():
 
-print(PRUNED_TFLITE)
+    for i in range(min(200, len(X_train))):
 
-import os
+        yield [X_train[i:i+1]]
 
-fp32 = os.path.getsize(MODEL)
+##########################################################
+# Convert INT8
+##########################################################
 
-pruned = os.path.getsize(PRUNED_MODEL)
+converter = tf.lite.TFLiteConverter.from_keras_model(final_model)
 
-tflite = os.path.getsize(PRUNED_TFLITE)
+converter.optimizations = [tf.lite.Optimize.DEFAULT]
 
-print()
+converter.representative_dataset = representative_dataset
 
-print("=" * 60)
+converter.target_spec.supported_ops = [
+    tf.lite.OpsSet.TFLITE_BUILTINS_INT8
+]
 
-print("MODEL SIZE COMPARISON")
+converter.inference_input_type = tf.int8
 
-print("=" * 60)
+converter.inference_output_type = tf.int8
 
-print(f"FP32           : {fp32/1024:.2f} KB")
+tflite_model = converter.convert()
 
-print(f"Pruned         : {pruned/1024:.2f} KB")
+with open(TFLITE_MODEL, "wb") as f:
 
-print(f"Pruned TFLite  : {tflite/1024:.2f} KB")
+    f.write(tflite_model)
 
+print("\nSaved")
 
+print(TFLITE_MODEL)
+
+print("\nSize")
+
+print(round(TFLITE_MODEL.stat().st_size / 1024, 2), "KB")

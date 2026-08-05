@@ -1,8 +1,10 @@
 Metric,Value
-Average Latency (ms),0.002794295782223344
-P95 Latency (ms),0.0029001384973526
-Latency Std (ms),0.0017172032022274826
-Throughput (inf/sec),357871.9212052518
-CPU (%),0.0
-Process Memory (RSS) (MB),346.50390625
+Mean Latency (ms),0.010817496804520488
+P95 Latency (ms),0.016780116129666504
 Model Size (KB),4.578125
+Classification Accuracy (%),94.73684210526315
+Energy per Inference (mJ),0.1622624520678073
+Latency Std (ms),0.046336660811351606
+Throughput (inf/sec),92442.82832439695
+CPU Usage (%),39.8
+Process Memory (MB),338.06640625

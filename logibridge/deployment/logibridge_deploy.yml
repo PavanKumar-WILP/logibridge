@@ -1,62 +1,97 @@
 ---
-- name: Deploy LogiBridge Edge AI Service
+- name: Deploy LogiBridge Edge Inference
   hosts: localhost
-  become: false
+  connection: local
+  become: yes
+  gather_facts: false
 
   vars:
-    project_root: "{{ playbook_dir }}/.."
+    app_dir: /opt/logibridge
+    image_name: logiedge-inference:v1
+    container_name: logiedge-inference
 
   tasks:
 
-    - name: Create required directories
-      file:
-        path: "{{ item }}"
+    #################################################################
+    # Task 1
+    #################################################################
+    - name: Create application directory
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
         state: directory
-      loop:
-        - "{{ project_root }}/training/models"
-        - "{{ project_root }}/monitoring/results"
+        mode: "0755"
 
-    - name: Install Python dependencies
-      pip:
-        name:
-          - numpy
-          - pandas
-          - tensorflow
-          - tensorflow-model-optimization
-          - paho-mqtt
-          - scikit-learn
-          - matplotlib
-          - psutil
-          - scipy
+    #################################################################
+    # Task 2
+    #################################################################
+    - name: Copy model
+      ansible.builtin.copy:
+        src: ../inference/model.tflite
+        dest: "{{ app_dir }}/model.tflite"
+        mode: "0644"
+      register: model_copy
 
-    - name: Verify model exists
-      stat:
-        path: "{{ project_root }}/inference/model.tflite"
-      register: model_file
+    #################################################################
+    # Task 3
+    #################################################################
+    - name: Copy reference distribution
+      ansible.builtin.copy:
+        src: ../monitoring/reference_dist.json
+        dest: "{{ app_dir }}/reference_dist.json"
+        mode: "0644"
+      register: ref_copy
 
-    - name: Stop deployment if model missing
-      fail:
-        msg: "model.tflite not found."
-      when: not model_file.stat.exists
-
-    - name: Start Mosquitto Broker
-      shell: mosquitto -d
+    #################################################################
+    # Task 4
+    #################################################################
+    - name: Stop running inference container if deployment changed
+      community.docker.docker_container:
+        name: "{{ container_name }}"
+        image: "{{ image_name }}"
+        state: stopped
+      when:
+        - model_copy.changed or ref_copy.changed
       ignore_errors: yes
 
-    - name: Launch Edge Inference Service
-      shell: |
-        nohup python {{ project_root }}/inference/inference_service.py \
-        > {{ project_root }}/monitoring/inference.log 2>&1 &
-      args:
-        chdir: "{{ project_root }}"
+    #################################################################
+    # Task 5
+    #################################################################
+    - name: Pull updated container image
+      community.docker.docker_image:
+        name: "{{ image_name }}"
+        source: local
 
-    - name: Launch Drift Monitor
-      shell: |
-        nohup python {{ project_root }}/monitoring/drift_monitor.py \
-        > {{ project_root }}/monitoring/drift.log 2>&1 &
-      args:
-        chdir: "{{ project_root }}"
+    #################################################################
+    # Task 6
+    #################################################################
+    - name: Start inference container with environment variables
+      community.docker.docker_container:
+        name: "{{ container_name }}"
+        image: "{{ image_name }}"
+        state: started
+        recreate: false
+        restart_policy: unless-stopped
+        container_default_behavior: compatibility
 
-    - name: Deployment Complete
-      debug:
-        msg: "LogiBridge Edge AI deployment completed successfully."
+        env:
+          MQTT_BROKER: host.docker.internal
+          MQTT_PORT: "1883"
+          TRUCK_ID: "TRUCK01"
+          MODEL_PATH: "/app/inference/model.tflite"
+
+        volumes:
+          - "{{ app_dir }}/model.tflite:/app/inference/model.tflite:ro"
+          - "{{ app_dir }}/reference_dist.json:/app/monitoring/reference_dist.json:ro"
+
+    #################################################################
+    # Task 7
+    #################################################################
+    - name: Wait 15 seconds and verify container is running
+      community.docker.docker_container_info:
+        name: "{{ container_name }}"
+      register: container_status
+      retries: 15
+      delay: 1
+      until:
+        - container_status.exists
+        - container_status.container.State.Status == "running"
