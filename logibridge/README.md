@@ -256,10 +256,7 @@ python training/generate_dataset.py
 ```
 o/p:
     training/dataset.csv
-<<<<<<< HEAD
 
-=======
->>>>>>> e569c484bd1e2c75be3e4c32fa73b2adf800b708
 ---
 
 ## Step 3
@@ -285,15 +282,11 @@ Convert Model
 ```bash
 python training/convert_ptq.py
 ```
-<<<<<<< HEAD
 
 o/p:
     inference/model.tflite
 
-=======
-o/p:
-    inference/model.tflite
->>>>>>> e569c484bd1e2c75be3e4c32fa73b2adf800b708
+
 ---
 
 ## Step 5
@@ -311,25 +304,17 @@ execute one of the simulator:
 
 ---
 
-<<<<<<< HEAD
 Open **Terminal 4**
 
-=======
-## Open **Terminal 4**
->>>>>>> e569c484bd1e2c75be3e4c32fa73b2adf800b708
+
 ```bash
 
 python inference/inference_service.py
 ```
-<<<<<<< HEAD
 
 Observe: Normal / Warning / Critical 
 based on simulator selected
 
-=======
-Observe: Normal / Warning / Critical 
-based on simulator selected
->>>>>>> e569c484bd1e2c75be3e4c32fa73b2adf800b708
 ---
 
 #Terminate Terminal 3 & 4
@@ -369,40 +354,24 @@ python inference/inference_service.py
 o/p:
     Observe PSI < 0.1
 
-<<<<<<< HEAD
 Stop Terminal 3
 
-=======
-# Stop Terminal 3
->>>>>>> e569c484bd1e2c75be3e4c32fa73b2adf800b708
 ```bash
 python data_pipeline/simulator.py --anomaly combined
 ```
 o/p:
     Observe a PSI value greater than the alert threshold (typically > 0.25), indicating concept drift.
 
-<<<<<<< HEAD
-Stop Terminal 3
-
-```bash
-python data_pipeline/simulator.py --anomaly none
-```
-
-=======
 #Stop Terminal 3
 ```bash
 python data_pipeline/simulator.py --anomaly none
 ```
->>>>>>> e569c484bd1e2c75be3e4c32fa73b2adf800b708
 o/p:
     terminal 4: 
         Observe PSI returning below the recovery threshold after normal data resumes.
 
 Stop Terminal 4
-<<<<<<< HEAD
 
-=======
->>>>>>> e569c484bd1e2c75be3e4c32fa73b2adf800b708
 ----
 
 
@@ -413,11 +382,6 @@ sudo ansible-playbook deployment/logibridge_deploy.yml
 sudo ansible-playbook deployment/logibridge_deploy.yml
 ```
 
-<<<<<<< HEAD
-o/p: 
-=======
-o/p:
->>>>>>> e569c484bd1e2c75be3e4c32fa73b2adf800b708
     reports changed=0
 
 
@@ -428,10 +392,6 @@ Benchmark
 ```bash
 python optimisation/benchmark.py
 ```
-<<<<<<< HEAD
-
-=======
->>>>>>> e569c484bd1e2c75be3e4c32fa73b2adf800b708
 o/p:
     Mean Latency (200 runs)
     P95 Latency           
