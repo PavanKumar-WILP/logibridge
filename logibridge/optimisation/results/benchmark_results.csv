@@ -1,10 +1,4 @@
-Metric,Value
-Mean Latency (ms),0.010817496804520488
-P95 Latency (ms),0.016780116129666504
-Model Size (KB),4.578125
-Classification Accuracy (%),94.73684210526315
-Energy per Inference (mJ),0.1622624520678073
-Latency Std (ms),0.046336660811351606
-Throughput (inf/sec),92442.82832439695
-CPU Usage (%),39.8
-Process Memory (MB),338.06640625
+Variant,Mean Latency (ms),P95 Latency (ms),Model Size (KB),Accuracy (%),Energy (mJ),CPU (%),Memory (MB)
+M1_FP32,66.5305,110.2178,30.53,94.74,138.7161,13.9,361.86
+M2_PTQ_INT8,0.0089,0.0152,4.58,94.74,0.015,11.2,370.65
+M3_PRUNED_PTQ_INT8,0.0092,0.0142,3.38,96.49,0.0315,22.7,370.73

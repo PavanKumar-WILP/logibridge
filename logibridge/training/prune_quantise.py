@@ -56,6 +56,7 @@ stats = np.load(STATS, allow_pickle=True).item()
 mean = stats["mean"]
 std = stats["std"]
 
+
 X = (X - mean) / std
 X = X.astype(np.float32)
 
@@ -72,13 +73,15 @@ X_train, X_test, y_train, y_test = train_test_split(
 ##########################################################
 
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Input, Dense
 
-model = Sequential([
-    Dense(32, activation="relu", input_shape=(6,)),
-    Dense(16, activation="relu"),
-    Dense(3, activation="softmax")
-])
+model = tf.keras.models.load_model(
+    ROOT / "training/models/model.keras",
+    compile=False
+)
+
+
+model(np.zeros((1, 6), dtype=np.float32))
 
 model.load_weights(ROOT / "training/models/model.weights.h5")
 

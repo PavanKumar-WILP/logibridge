@@ -30,7 +30,7 @@ from sklearn.metrics import (
 
 import tensorflow as tf
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Input, Dense
 from tensorflow.keras.callbacks import EarlyStopping
 
 import random
@@ -133,39 +133,12 @@ X_test = X_test.astype(np.float32)
 # Build MLP
 # ------------------------------------------------------
 
-model = Sequential(
-
-    [
-
-        Dense(
-
-            32,
-
-            activation="relu",
-
-            input_shape=(6,)
-
-        ),
-
-        Dense(
-
-            16,
-
-            activation="relu"
-
-        ),
-
-        Dense(
-
-            3,
-
-            activation="softmax"
-
-        )
-
-    ]
-
-)
+model = Sequential([
+    Input(shape=(6,)),
+    Dense(32, activation="relu"),
+    Dense(16, activation="relu"),
+    Dense(3, activation="softmax")
+])
 
 model.compile(
 
@@ -344,9 +317,9 @@ with open(metrics_file, "w") as f:
         indent=4
     )
 
-model.save(MODEL_PATH)
+MODEL_H5 = MODEL_DIR / "model_fp32.h5"
 
-model.save_weights(WEIGHTS_PATH)
+model.save(MODEL_H5)
 
 loss, accuracy = model.evaluate(
     X_test,

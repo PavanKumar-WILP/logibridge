@@ -1,403 +1,693 @@
 #!/usr/bin/env python3
 
 """
--------------------------------------------------------
+---------------------------------------------------------
+
 LogiBridge
 
-Component G
+Component F2
 
-Benchmarking
+Benchmark Three Model Variants
 
-Task F2
+Benchmarks
+
+M1 - FP32 Baseline
+M2 - PTQ INT8
+M3 - Structured Pruning + PTQ INT8
 
 Measures
 
-1. Mean inference latency
-2. P95 latency
+1. Mean inference latency (200 runs)
+2. P95 inference latency
 3. Model size
 4. Classification accuracy
 5. Energy per inference
 
-Additional Metrics
-
-- CPU Usage
-- Memory Usage
-- System Information
-
--------------------------------------------------------
+---------------------------------------------------------
 """
 
-import json
 import os
-import platform
 import time
+import platform
 import warnings
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import psutil
 import tensorflow as tf
 
-warnings.simplefilter("ignore")
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score
 
-# ------------------------------------------------------
+warnings.filterwarnings("ignore")
+
+##########################################################
 # Paths
-# ------------------------------------------------------
+##########################################################
 
 ROOT = Path(__file__).resolve().parents[1]
 
-MODEL = ROOT / "inference" / "model.tflite"
+DATASET = ROOT / "training" / "dataset.csv"
 
-if not MODEL.exists():
+TRAINING_STATS = ROOT / "data_pipeline" / "training_stats.npy"
 
-    raise FileNotFoundError(
-        f"{MODEL} not found.\n"
-        "Run convert_ptq.py first."
-    )
+RESULTS_DIR = ROOT / "optimisation" / "results"
 
-RESULTS = ROOT / "optimisation" / "results"
-
-RESULTS.mkdir(
+RESULTS_DIR.mkdir(
     parents=True,
     exist_ok=True
 )
 
-METRICS_FILE = ROOT / "training" / "models" / "model_metrics.json"
+##########################################################
+# Model Paths
+##########################################################
 
-# ------------------------------------------------------
-# Load Accuracy
-# ------------------------------------------------------
+M1_WEIGHTS = ROOT / "training" / "models" / "model.weights.h5"
 
-accuracy = "N/A"
+M2_MODEL = ROOT / "inference" / "model.tflite"
 
-if METRICS_FILE.exists():
+M3_MODEL = ROOT / "inference" / "pruned_model.tflite"
 
-    with open(METRICS_FILE) as f:
+##########################################################
+# Benchmark Parameters
+##########################################################
 
-        accuracy = json.load(f)["accuracy"] * 100
+WARMUP_RUNS = 10
 
-# ------------------------------------------------------
-# Load Model
-# ------------------------------------------------------
+BENCHMARK_RUNS = 200
 
-interpreter = tf.lite.Interpreter(
-    model_path=str(MODEL)
+CPU_TDP_WATTS = 15.0
+
+##########################################################
+# Load Dataset
+##########################################################
+
+if not DATASET.exists():
+
+    raise FileNotFoundError(DATASET)
+
+df = pd.read_csv(DATASET)
+
+X = df.iloc[:, :-1].values
+
+y = df.iloc[:, -1].values
+
+stats = np.load(
+    TRAINING_STATS,
+    allow_pickle=True
+).item()
+
+mean = stats["mean"]
+
+std = stats["std"]
+
+X = (X - mean) / std
+
+X = X.astype(np.float32)
+
+X_train, X_test, y_train, y_test = train_test_split(
+
+    X,
+
+    y,
+
+    test_size=0.20,
+
+    random_state=42,
+
+    stratify=y
+
 )
 
-interpreter.allocate_tensors()
 
-input_details = interpreter.get_input_details()
-
-output_details = interpreter.get_output_details()
-
-print("=" * 60)
-print("TensorFlow Lite Benchmark")
-print("=" * 60)
-print("Model :", MODEL)
+print("=" * 65)
+print("LogiBridge Benchmark")
+print("=" * 65)
 print()
 
-# ------------------------------------------------------
-# Dummy Input
-# ------------------------------------------------------
+print(f"Validation Samples : {len(X_test)}")
+print()
 
-if input_details[0]["dtype"] == np.int8:
+##########################################################
+# Helper Function
+##########################################################
 
-    dummy = np.random.randint(
-        -128,
-        127,
-        size=(1, 6),
-        dtype=np.int8
+def calculate_metrics(
+
+    latencies,
+
+    accuracy,
+
+    model_size_kb,
+
+    cpu_percent,
+
+    memory_mb,
+
+    variant
+
+):
+
+    latency_mean = float(np.mean(latencies))
+
+    latency_p95 = float(np.percentile(latencies, 95))
+
+    #######################################################
+    # Energy Estimation
+    # E = P × t
+    #######################################################
+
+    effective_power = CPU_TDP_WATTS * (cpu_percent / 100.0)
+
+    energy = effective_power * (latency_mean / 1000.0)
+
+    energy *= 1000          # Joules -> milliJoules
+
+    return {
+
+        "Variant": variant,
+
+        "Mean Latency (ms)": round(latency_mean, 4),
+
+        "P95 Latency (ms)": round(latency_p95, 4),
+
+        "Model Size (KB)": round(model_size_kb, 2),
+
+        "Accuracy (%)": round(accuracy * 100, 2),
+
+        "Energy (mJ)": round(energy, 4),
+
+        "CPU (%)": round(cpu_percent, 2),
+
+        "Memory (MB)": round(memory_mb, 2)
+
+    }
+
+##########################################################
+# Benchmark Keras FP32 Model (M1)
+##########################################################
+
+def benchmark_keras(weights_path, variant):
+
+    print(f"Benchmarking {variant}")
+
+    model = tf.keras.models.load_model(
+        ROOT / "training/models/model_fp32.h5",
+        compile=False
     )
 
-else:
+    ######################################################
+    # Dummy input
+    ######################################################
 
     dummy = np.random.rand(
         1,
         6
     ).astype(np.float32)
 
-# ------------------------------------------------------
-# Warm-up
-# ------------------------------------------------------
+    ######################################################
+    # Warm-up (excluded from timing)
+    ######################################################
 
-print("Running warm-up...")
+    for _ in range(WARMUP_RUNS):
 
-for _ in range(10):
+        _ = model.predict(
+            dummy,
+            verbose=0
+        )
 
-    interpreter.set_tensor(
-        input_details[0]["index"],
-        dummy
+    ######################################################
+    # Benchmark
+    ######################################################
+
+    process = psutil.Process()
+
+    psutil.cpu_percent(interval=None)
+
+    cpu_before = psutil.cpu_percent(interval=0.25)
+
+    memory_after = process.memory_info().rss
+
+    ######################################################
+    # Actual Benchmark (200 timed runs)
+    ######################################################
+
+    latencies = []
+
+    for _ in range(BENCHMARK_RUNS):
+
+        start = time.perf_counter()
+
+        _ = model.predict(
+            dummy,
+            verbose=0
+        )
+
+        end = time.perf_counter()
+
+        latencies.append(
+            (end - start) * 1000
+        )
+
+    cpu_after = psutil.cpu_percent(interval=0.25)
+
+    cpu_percent = (cpu_before + cpu_after) / 2
+
+    ######################################################
+    # Accuracy on validation set
+    ######################################################
+
+    predictions = model.predict(
+        X_test,
+        verbose=0
     )
 
-    interpreter.invoke()
-
-    interpreter.get_tensor(
-        output_details[0]["index"]
+    predictions = np.argmax(
+        predictions,
+        axis=1
     )
 
-print("Warm-up complete.\n")
-
-# ------------------------------------------------------
-# Benchmark
-# ------------------------------------------------------
-
-TOTAL_RUNS = 200
-
-latencies = []
-
-print(f"Running {TOTAL_RUNS} benchmark iterations...\n")
-
-process = psutil.Process()
-
-cpu_before = psutil.cpu_percent(interval=1)
-
-memory_before = process.memory_info().rss
-
-for _ in range(TOTAL_RUNS):
-
-    start = time.perf_counter()
-
-    interpreter.set_tensor(
-        input_details[0]["index"],
-        dummy
+    accuracy = accuracy_score(
+        y_test,
+        predictions
     )
 
-    interpreter.invoke()
+    ######################################################
+    # Model size
+    ######################################################
 
-    interpreter.get_tensor(
-        output_details[0]["index"]
+    model_size = os.path.getsize(
+        weights_path
+    ) / 1024
+
+    ######################################################
+    # Memory used
+    ######################################################
+
+    memory_mb = memory_after / (1024 * 1024)
+
+    ######################################################
+    # Return metrics
+    ######################################################
+
+    return calculate_metrics(
+
+        latencies=latencies,
+
+        accuracy=accuracy,
+
+        model_size_kb=model_size,
+
+        cpu_percent=cpu_percent,
+
+        memory_mb=memory_mb,
+
+        variant=variant
+
     )
 
-    end = time.perf_counter()
+##########################################################
+# Benchmark TensorFlow Lite Models (M2 / M3)
+##########################################################
 
-    latencies.append(
-        (end - start) * 1000
+def benchmark_tflite(model_path, variant):
+
+    print(f"Benchmarking {variant}")
+
+    ######################################################
+    # Load Interpreter
+    ######################################################
+
+    interpreter = tf.lite.Interpreter(
+        model_path=str(model_path)
     )
 
-cpu_after = psutil.cpu_percent(interval=1)
+    interpreter.allocate_tensors()
 
-memory_after = process.memory_info().rss
+    input_details = interpreter.get_input_details()
 
-# ------------------------------------------------------
-# Calculate Metrics
-# ------------------------------------------------------
+    output_details = interpreter.get_output_details()
 
-latency_mean = np.mean(latencies)
+    ######################################################
+    # Input Information
+    ######################################################
 
-latency_std = np.std(latencies)
+    input_dtype = input_details[0]["dtype"]
 
-latency_p95 = np.percentile(
-    latencies,
-    95
-)
+    input_index = input_details[0]["index"]
 
-throughput = (
-    1000.0 / latency_mean
-    if latency_mean > 0
-    else 0
-)
+    output_index = output_details[0]["index"]
 
-model_size_kb = (
-    os.path.getsize(MODEL)
-    / 1024
-)
+    scale, zero_point = input_details[0]["quantization"]
 
-memory_mb = (
-    memory_after
-    / (1024 * 1024)
-)
+    ######################################################
+    # Dummy Input
+    ######################################################
 
-# ------------------------------------------------------
-# Energy Estimation
-# ------------------------------------------------------
-#
-# Assignment Formula:
-#
-#     E = P × t
-#
-# where
-#
-# P = CPU Power (Watts)
-# t = inference time (seconds)
-#
-# We assume a 15W laptop CPU.
-#
-# Energy is reported in mJ.
-# ------------------------------------------------------
+    dummy = np.random.rand(
+        1,
+        6
+    ).astype(np.float32)
 
-CPU_TDP_WATTS = 15.0
+    if input_dtype == np.int8:
 
-energy_mj = (
-    CPU_TDP_WATTS
-    * (latency_mean / 1000.0)
-    * 1000
-)
+        dummy = np.round(
+            dummy / scale + zero_point
+        ).astype(np.int8)
 
-# ------------------------------------------------------
-# Console Summary
-# ------------------------------------------------------
+    ######################################################
+    # Warm-up (excluded)
+    ######################################################
 
-print("=" * 60)
-print("Benchmark Results")
-print("=" * 60)
+    for _ in range(WARMUP_RUNS):
 
-print(f"Runs                    : {TOTAL_RUNS}")
-print(f"Mean Latency (ms)       : {latency_mean:.6f}")
-print(f"P95 Latency (ms)        : {latency_p95:.6f}")
-print(f"Latency Std (ms)        : {latency_std:.6f}")
-print(f"Throughput (inf/sec)    : {throughput:.2f}")
-print(f"CPU Usage (%)           : {cpu_after:.2f}")
-print(f"Memory (MB)             : {memory_mb:.2f}")
-print(f"Model Size (KB)         : {model_size_kb:.3f}")
+        interpreter.set_tensor(
+            input_index,
+            dummy
+        )
 
-if accuracy != "N/A":
+        interpreter.invoke()
 
-    print(f"Accuracy (%)            : {accuracy:.2f}")
+        interpreter.get_tensor(
+            output_index
+        )
+
+    ######################################################
+    # Benchmark
+    ######################################################
+
+
+    process = psutil.Process()
+
+    psutil.cpu_percent(interval=None)
+
+    cpu_before = psutil.cpu_percent(interval=0.25)
+
+    latencies = []
+
+    for _ in range(BENCHMARK_RUNS):
+
+        start = time.perf_counter()
+
+        interpreter.set_tensor(
+            input_index,
+            dummy
+        )
+
+        interpreter.invoke()
+
+        interpreter.get_tensor(
+            output_index
+        )
+
+        end = time.perf_counter()
+
+        latencies.append(
+            (end - start) * 1000
+        )
+
+    cpu_after = psutil.cpu_percent(interval=0.25)
+
+    cpu_percent = (cpu_before + cpu_after) / 2
+
+    memory_after = process.memory_info().rss
+
+    
+
+    ######################################################
+    # Accuracy
+    ######################################################
+
+    predictions = []
+
+    for sample in X_test:
+
+        sample = sample.reshape(1, 6).astype(np.float32)
+
+        if input_dtype == np.int8:
+
+            sample = np.round(
+                sample / scale + zero_point
+            ).astype(np.int8)
+
+        interpreter.set_tensor(
+            input_index,
+            sample
+        )
+
+        interpreter.invoke()
+
+        output = interpreter.get_tensor(output_index)
+
+        if output_details[0]["dtype"] == np.int8:
+            out_scale, out_zero = output_details[0]["quantization"]
+            output = (output.astype(np.float32) - out_zero) * out_scale
+
+        predictions.append(int(np.argmax(output)))
+
+    accuracy = accuracy_score(
+        y_test,
+        predictions
+    )
+
+
+    ######################################################
+    # Model Size
+    ######################################################
+
+    model_size = os.path.getsize(
+        model_path
+    ) / 1024
+
+    ######################################################
+    # Memory
+    ######################################################
+
+    memory_mb = memory_after / (1024 * 1024)
+
+    ######################################################
+    # Return Metrics
+    ######################################################
+
+    return calculate_metrics(
+
+        latencies=latencies,
+
+        accuracy=accuracy,
+
+        model_size_kb=model_size,
+
+        cpu_percent=cpu_percent,
+
+        memory_mb=memory_mb,
+
+        variant=variant
+
+    )
+
+##########################################################
+# Execute Benchmarks
+##########################################################
+
+results = []
+
+##########################################################
+# M1 - FP32
+##########################################################
+
+if M1_WEIGHTS.exists():
+
+    results.append(
+
+        benchmark_keras(
+
+            M1_WEIGHTS,
+
+            "M1_FP32"
+
+        )
+
+    )
 
 else:
 
-    print("Accuracy (%)            : N/A")
+    print()
 
-print(f"Energy / Inference (mJ) : {energy_mj:.4f}")
+    print("M1 weights not found")
 
-print()
+    print(M1_WEIGHTS)
 
-# ------------------------------------------------------
-# Required Assignment Metrics
-# ------------------------------------------------------
+##########################################################
+# M2 - PTQ INT8
+##########################################################
 
-required_df = pd.DataFrame({
+if M2_MODEL.exists():
 
-    "Metric":[
+    results.append(
 
-        "Mean Latency (ms)",
+        benchmark_tflite(
 
-        "P95 Latency (ms)",
+            M2_MODEL,
 
-        "Model Size (KB)",
+            "M2_PTQ_INT8"
 
-        "Classification Accuracy (%)",
+        )
 
-        "Energy per Inference (mJ)"
+    )
 
-    ],
+else:
 
-    "Value":[
+    print()
 
-        latency_mean,
+    print("M2 model not found")
 
-        latency_p95,
+    print(M2_MODEL)
 
-        model_size_kb,
+##########################################################
+# M3 - Pruned PTQ INT8
+##########################################################
 
-        accuracy,
+if M3_MODEL.exists():
 
-        energy_mj
+    results.append(
 
-    ]
+        benchmark_tflite(
 
-})
+            M3_MODEL,
 
-# ------------------------------------------------------
-# Additional Metrics
-# ------------------------------------------------------
+            "M3_PRUNED_PTQ_INT8"
 
-extra_df = pd.DataFrame({
+        )
 
-    "Metric":[
+    )
 
-        "Latency Std (ms)",
+else:
 
-        "Throughput (inf/sec)",
+    print()
 
-        "CPU Usage (%)",
+    print("M3 model not found")
 
-        "Process Memory (MB)"
+    print(M3_MODEL)
 
-    ],
+##########################################################
+# Results DataFrame
+##########################################################
 
-    "Value":[
+benchmark_df = pd.DataFrame(results)
 
-        latency_std,
+benchmark_df = benchmark_df[[
 
-        throughput,
+    "Variant",
 
-        cpu_after,
+    "Mean Latency (ms)",
 
-        memory_mb
+    "P95 Latency (ms)",
 
-    ]
+    "Model Size (KB)",
 
-})
+    "Accuracy (%)",
 
-benchmark_df = pd.concat(
-    [required_df, extra_df],
-    ignore_index=True
-)
+    "Energy (mJ)",
 
-print(benchmark_df)
+    "CPU (%)",
 
-# ------------------------------------------------------
-# Save Benchmark Results
-# ------------------------------------------------------
+    "Memory (MB)"
 
-csv_file = RESULTS / "benchmark_results.csv"
+]]
+
+##########################################################
+# Save CSV
+##########################################################
+
+csv_file = RESULTS_DIR / "benchmark_results.csv"
 
 benchmark_df.to_csv(
+
     csv_file,
+
     index=False
+
 )
 
+##########################################################
+# Console Output
+##########################################################
+
 print()
-print(f"Benchmark results saved to:")
+
+print("=" * 75)
+
+print("FINAL BENCHMARK RESULTS")
+
+print("=" * 75)
+
+print()
+
+print(benchmark_df.to_string(index=False))
+
+print()
+
+print("=" * 75)
+
+print("Benchmark results saved")
+
 print(csv_file)
 
-# ------------------------------------------------------
-# Final Summary
-# ------------------------------------------------------
+print("=" * 75)
 
 print()
-print("=" * 60)
-print("Benchmark Completed")
-print("=" * 60)
 
-print()
+##########################################################
+# System Information
+##########################################################
+
 print("System Information")
-print("------------------")
-print("OS        :", platform.platform())
-print("Processor :", platform.processor())
-print("Python    :", platform.python_version())
-print("TensorFlow:", tf.__version__)
+
+print("-" * 75)
+
+print("Operating System :", platform.platform())
+
+print("Processor        :", platform.processor())
+
+print("Python           :", platform.python_version())
+
+print("TensorFlow       :", tf.__version__)
+
+
+
+##########################################################
+# Recommended Variant
+##########################################################
+
+best = benchmark_df.sort_values(
+
+    by=[
+
+        "Accuracy (%)",
+
+        "Mean Latency (ms)"
+
+    ],
+
+    ascending=[False, True]
+
+).iloc[0]
 
 print()
-print("Generated Files")
-print("----------------")
-print(csv_file)
 
-print()
-print("=" * 60)
-print("Required Assignment Metrics")
-print("=" * 60)
-print(f"Mean Latency (200 runs)      : {latency_mean:.6f} ms")
-print(f" P95 Latency                  : {latency_p95:.6f} ms")
-print(f" Model Size                   : {model_size_kb:.3f} KB")
+print("=" * 75)
 
-if accuracy != "N/A":
-    print(f" Classification Accuracy      : {accuracy:.2f} %")
-else:
-    print(" Classification Accuracy      : N/A (model_metrics.json not found)")
+print("Recommended Variant")
 
-print(f" Energy per Inference         : {energy_mj:.4f} mJ")
+print("=" * 75)
 
-print()
-print("Additional Metrics")
-print("------------------")
-print(f"Latency Std        : {latency_std:.6f} ms")
-print(f"Throughput         : {throughput:.2f} inf/sec")
-print(f"CPU Usage          : {cpu_after:.2f} %")
-print(f"Process Memory     : {memory_mb:.2f} MB")
+print(
 
-print()
-print("Benchmark finished successfully.")
+    f"{best['Variant']} "
+
+    f"(Accuracy={best['Accuracy (%)']}%, "
+
+    f"Latency={best['Mean Latency (ms)']} ms)"
+
+)

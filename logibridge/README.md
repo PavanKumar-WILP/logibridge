@@ -398,6 +398,7 @@ o/p:
     Model Size        
     Classification Accuracy   
     Energy per Inference      
+    
 ---
 
 # Expected Outputs
