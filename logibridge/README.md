@@ -430,7 +430,8 @@ optimisation/results/
 ---
 
 # Authors
-	Pavan Kumar S (2024ac05682)
+    Pavan Kumar S (2024ac05682)
+    RAJESH A S (2024ac05683)
     Sachin Deepak K (2024ac05608)
     Dinesh Kumar P (2024ac05562)
 ---
