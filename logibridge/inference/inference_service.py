@@ -85,7 +85,7 @@ INFERENCE_TOPIC = f"logibridge/trucks/{TRUCK_ID}/inference"
 # Processing Parameters
 WINDOW_TEMP_SAMPLES = 30  # 30 seconds @ 1Hz
 WINDOW_VIB_SAMPLES = 15   # 30 seconds @ 0.5Hz
-STEP_SECONDS = 1 #10         # Process window every 10 seconds
+STEP_SECONDS = 10         # Process window every 10 seconds
 ALERT_THRESHOLD = 3       # N consecutive criticals to fire alert
 
 # --- Global Buffers & State ---

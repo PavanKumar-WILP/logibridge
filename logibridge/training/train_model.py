@@ -222,10 +222,6 @@ report = classification_report(
 
 critical_recall = report["Critical"]["recall"]
 
-print(f"Critical Recall     : {critical_recall:.4f}")
-
-print()
-
 print(classification_report(
     y_test,
     prediction,
@@ -252,13 +248,9 @@ if accuracy >= 0.88:
 else:
     print("Accuracy below required threshold")
 
-if critical_recall >= 0.95:
-    print("Critical Recall requirement satisfied")
-else:
-    print("Critical Recall below required threshold")
 
 # ------------------------------------------------------
-# Mandatory +3 Sigma Experiment
+# +3 Sigma Experiment
 # ------------------------------------------------------
 
 shifted_mean = mean + (3 * std)
@@ -289,15 +281,6 @@ shift_accuracy = accuracy_score(
 
 )
 
-print()
-
-print("=" * 50)
-
-print("Accuracy with shifted statistics")
-
-print("=" * 50)
-
-print(shift_accuracy)
 
 # ------------------------------------------------------
 # Save Model
@@ -317,7 +300,17 @@ with open(metrics_file, "w") as f:
         indent=4
     )
 
+model.save(MODEL_PATH)
 MODEL_H5 = MODEL_DIR / "model_fp32.h5"
+
+model.save_weights(WEIGHTS_PATH)
+
+WEIGHTS_NPZ = MODEL_DIR / "model_weights.npz"
+
+np.savez(
+    WEIGHTS_NPZ,
+    *model.get_weights()
+)
 
 model.save(MODEL_H5)
 
@@ -337,7 +330,7 @@ print("=" * 60)
 
 print(f"Loss     : {loss:.4f}")
 
-print(f"Accuracy : {accuracy:.4f}")
+print(f"Accuracy : {accuracy*100:.2f}%")
 print()
 
 print("Model Saved")

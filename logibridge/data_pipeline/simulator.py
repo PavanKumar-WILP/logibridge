@@ -122,146 +122,150 @@ last_vibration_publish = time.time()
 # ----------------------------------------------------
 # Main Loop
 # ----------------------------------------------------
+try:
+    while True:
 
-while True:
+        timestamp = datetime.now().isoformat()
 
-    timestamp = datetime.now().isoformat()
+        # ==================================================
+        # Temperature
+        # ==================================================
 
-    # ==================================================
-    # Temperature
-    # ==================================================
+        if args.anomaly in ["temp_drift", "combined"]:
 
-    if args.anomaly in ["temp_drift", "combined"]:
+            current_temperature = min(
+            current_temperature + TEMP_DRIFT,
+                12.0)
 
-        current_temperature = min(
-           current_temperature + TEMP_DRIFT,
-            12.0)
-
-        temperature = current_temperature + np.random.normal(
-            0,
-            0.10
-        )
-
-    else:
-
-        current_temperature = np.random.normal(
-            TEMP_MEAN,
-            TEMP_STD
-        )
-
-        temperature = current_temperature
-
-    temp_payload = {
-
-        "truck_id": TRUCK_ID,
-
-        "sensor": "temperature",
-
-        "timestamp": timestamp,
-
-        "value": round(float(temperature), 2)
-
-    }
-
-    result = client.publish(
-
-        TOPIC_TEMP,
-
-        json.dumps(temp_payload),
-
-        qos=1
-
-    )
-    result.wait_for_publish()
-
-    print(f"TEMP : {temperature:.2f} °C")
-
-    # ==================================================
-    # Vibration (0.5 Hz)
-    # ==================================================
-
-    if time.time() - last_vibration_publish >= 2:
-
-        last_vibration_publish = time.time()
-
-        if args.anomaly in ["vibration", "combined"]:
-
-            vibration = np.random.normal(
-
-                VIB_ANOMALY_MEAN,
-
-                VIB_ANOMALY_STD
-
+            temperature = current_temperature + np.random.normal(
+                0,
+                0.10
             )
 
         else:
 
-            vibration = np.random.normal(
-
-                VIB_MEAN,
-
-                VIB_STD
-
+            current_temperature = np.random.normal(
+                TEMP_MEAN,
+                TEMP_STD
             )
 
-        vib_payload = {
+            temperature = current_temperature
+
+        temp_payload = {
 
             "truck_id": TRUCK_ID,
-            "sensor": "vibration",
+
+            "sensor": "temperature",
+
             "timestamp": timestamp,
-            "value": round(float(vibration), 3)
+
+            "value": round(float(temperature), 2)
 
         }
 
         result = client.publish(
 
-            TOPIC_VIB,
+            TOPIC_TEMP,
 
-            json.dumps(vib_payload),
+            json.dumps(temp_payload),
 
             qos=1
 
         )
         result.wait_for_publish()
 
-        print(f"VIB  : {vibration:.3f} g")
+        print(f"TEMP : {temperature:.2f} °C")
 
-    # ==================================================
-    # Door Events
-    # ==================================================
+        # ==================================================
+        # Vibration (0.5 Hz)
+        # ==================================================
 
-    if random.random() < 0.02:
+        if time.time() - last_vibration_publish >= 2:
 
-        event = random.choice(
+            last_vibration_publish = time.time()
 
-            [
+            if args.anomaly in ["vibration", "combined"]:
 
-                "OPEN",
+                vibration = np.random.normal(
 
-                "CLOSE"
+                    VIB_ANOMALY_MEAN,
 
-            ]
+                    VIB_ANOMALY_STD
 
-        )
+                )
 
-        door_payload = {
+            else:
 
-            "truck_id": TRUCK_ID,
-            "sensor": "door",
-            "timestamp": timestamp,
-            "event": event
+                vibration = np.random.normal(
 
-        }
+                    VIB_MEAN,
 
-        result = client.publish(
-            TOPIC_DOOR,
-            json.dumps(door_payload),
-            qos=1,
-            retain=False
-        )
+                    VIB_STD
 
-        result.wait_for_publish()
+                )
 
-        print(f"DOOR : {event}")
+            vib_payload = {
 
-    time.sleep(1)
+                "truck_id": TRUCK_ID,
+                "sensor": "vibration",
+                "timestamp": timestamp,
+                "value": round(float(vibration), 3)
+
+            }
+
+            result = client.publish(
+
+                TOPIC_VIB,
+
+                json.dumps(vib_payload),
+
+                qos=1
+
+            )
+            result.wait_for_publish()
+
+            print(f"VIB  : {vibration:.3f} g")
+
+        # ==================================================
+        # Door Events
+        # ==================================================
+
+        if random.random() < 0.02:
+
+            event = random.choice(
+
+                [
+
+                    "OPEN",
+
+                    "CLOSE"
+
+                ]
+
+            )
+
+            door_payload = {
+
+                "truck_id": TRUCK_ID,
+                "sensor": "door",
+                "timestamp": timestamp,
+                "event": event
+
+            }
+
+            result = client.publish(
+                TOPIC_DOOR,
+                json.dumps(door_payload),
+                qos=1,
+                retain=False
+            )
+
+            result.wait_for_publish()
+
+            print(f"DOOR : {event}")
+
+        time.sleep(1)
+except KeyboardInterrupt:
+    print("\nSimulator stopped by user")
+    client.loop_stop()
+    client.disconnect()

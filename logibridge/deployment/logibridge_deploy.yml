@@ -87,11 +87,10 @@
     # Task 7
     #################################################################
     - name: Wait 15 seconds and verify container is running
-      community.docker.docker_container_info:
-        name: "{{ container_name }}"
-      register: container_status
-      retries: 15
-      delay: 1
-      until:
-        - container_status.exists
-        - container_status.container.State.Status == "running"
+      ansible.builtin.shell: |
+        sleep 15
+        docker inspect "{{ container_name }}" --format '{% raw %}{{.State.Status}}{% endraw %}' | grep -q '^running$'
+      args:
+        executable: /bin/bash
+      changed_when: false
+

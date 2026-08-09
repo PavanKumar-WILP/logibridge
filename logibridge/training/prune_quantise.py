@@ -29,6 +29,9 @@ import tensorflow_model_optimization as tfmot
 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
+import tf_keras
+from tf_keras.models import Sequential
+from tf_keras.layers import Input, Dense
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -72,18 +75,24 @@ X_train, X_test, y_train, y_test = train_test_split(
 # Load trained model
 ##########################################################
 
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Input, Dense
+model = Sequential([
+    Input(shape=(6,)),
+    Dense(32, activation="relu"),
+    Dense(16, activation="relu"),
+    Dense(3, activation="softmax")
+])
 
-model = tf.keras.models.load_model(
-    ROOT / "training/models/model.keras",
-    compile=False
+weights_data = np.load(
+    ROOT / "training" / "models" / "model_weights.npz"
 )
 
+weights = [
+    weights_data[name]
+    for name in weights_data.files
+]
 
-model(np.zeros((1, 6), dtype=np.float32))
-
-model.load_weights(ROOT / "training/models/model.weights.h5")
+model.set_weights(weights)
+print("Original model weights:", len(model.get_weights()))
 
 ##########################################################
 # Apply pruning

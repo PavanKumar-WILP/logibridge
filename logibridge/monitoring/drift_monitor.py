@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 REFERENCE_FILE = ROOT / "monitoring" / "reference_dist.json"
 
-BINS = [0.0, 0.25, 0.50, 0.75, 1.01]
+BINS = [0.0, 0.25, 0.50, 0.75, 1.00]
 
 reference_scores = []
 
@@ -32,7 +32,7 @@ last_psi_time = time.time()
 def save_reference_distribution():
     global reference_confidences
 
-    bins = [0.0, 0.25, 0.50, 0.75, 1.01]
+    bins = [0.0, 0.25, 0.50, 0.75, 1.00]
 
     hist, _ = np.histogram(
         reference_confidences,
